@@ -373,7 +373,6 @@ int fork(void)
     struct proc *np;
     struct proc *p = myproc();
 
-
     // Allocate process.
     if ((np = allocproc()) == 0)
     {
@@ -832,15 +831,14 @@ void schedset(int id)
     printf("Scheduler successfully changed to %s\n", available_schedulers[id].name);
 }
 
-
-// find the physical address of the virtual address
-uint64 va2pa(uint64 va, int p_id){
+uint64 va2pa(uint64 va, int pid)
+{
     struct proc *p;
 
-    for(p = proc; p < &proc[NPROC]; p++){
-        if(!(p->pid == p_id)){
-
-            // find the physical address of the virtual address
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+        if (p->pid == pid)
+        {
             uint64 pa = walkaddr(p->pagetable, va);
             return pa;
         }
