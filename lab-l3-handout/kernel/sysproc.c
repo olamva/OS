@@ -119,18 +119,32 @@ uint64 sys_schedset(void)
 
 uint64 sys_va2pa(void)
 {
-    //physical address should be printed in hexadecimal value
+    extern struct proc proc[NPROC];
 
-    //if PID does not exist, syscal should return 0
-    //if no PID is givn, it should get its own pid
-
-    /* printf("TODO: IMPLEMENT ME [%s@%s (line %d)]", __func__, __FILE__, __LINE__); */
-    uint64 va;
-    int p_id;
-    argaddr(0, &va);
-    argint(1, &p_id);
-
-    return va2pa(va, p_id);
+    int va = 0;
+    int pid = 0;
+    argint(0, &va);
+    argint(1, &pid);
+    if (pid == 0)
+    {
+        pid = sys_getpid();
+    }
+    for (struct proc *p = proc; p < &proc[NPROC]; p++)
+    {
+        acquire(&p->lock);
+        if (p->pid == pid)
+        {
+            uint64 addr = walkaddr(p->pagetable, va);
+            if (addr <= 0)
+            {
+                panic("va2pa");
+            }
+            release(&p->lock);
+            return addr;
+        }
+        release(&p->lock);
+    }
+    return 0;
 }
 
 uint64 sys_pfreepages(void)
