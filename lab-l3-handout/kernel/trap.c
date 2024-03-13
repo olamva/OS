@@ -34,23 +34,14 @@ void trapinithart(void)
 void usertrap(void)
 {
   int which_dev = 0;
-
   if ((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
-
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
-
   struct proc *p = myproc();
-
-  // save user program counter.
   p->trapframe->epc = r_sepc();
-
-  if (r_scause() == 8)
+  uint64 scause = r_scause();
+  if (scause == 8) // System call
   {
-    // system call
-
     if (killed(p))
       exit(-1);
 
@@ -66,7 +57,9 @@ void usertrap(void)
   }
   else if ((which_dev = devintr()) != 0)
   {
-    // ok
+    printf("scause %p\n", scause);
+    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
+    panic("kerneltrap");
   }
   else
   {
@@ -74,44 +67,39 @@ void usertrap(void)
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
   }
-
   if (killed(p))
     exit(-1);
-
-  // give up the CPU if this is a timer interrupt.
   if (which_dev == 2)
     yield();
-
   usertrapret();
 }
-// int handle_cow_fault(uint64 va)
-// {
-//   struct proc *p = myproc();
-//   pte_t *pte;
-//   uint64 pa;
-//   char *mem;
-//   // Walk the page table to find the page table entry for the faulting address
-//   if ((pte = walk(p->pagetable, va, 0)) == 0)
-//     return -1; // Page table entry does not exist
-//   if ((*pte & PTE_V) == 0 || (*pte & PTE_W) != 0)
-//     return -1; // Page not present or already writable
-//   pa = PTE2PA(*pte);
-//   // Allocate a new page to copy the contents
-//   if ((mem = kalloc()) == 0)
-//     return -1;
-//   memmove(mem, (char *)pa, PGSIZE);
-//   // Map the new page as writable
-//   if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_FLAGS(*pte) | PTE_W) != 0)
-//   {
-//     kfree(mem);
-//     return -1;
-//   }
-//   // Unmap the old page
-//   uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 1);
-//   return 0;
-// }
 
-//
+int handle_cow_fault(uint64 va)
+{
+  struct proc *p = myproc();
+  pte_t *pte;
+  uint64 pa;
+  char *mem;
+  // Walk the page table to find the page table entry for the faulting address
+  if ((pte = walk(p->pagetable, va, 0)) == 0)
+    return -1; // Page table entry does not exist
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_W) != 0)
+    return -1; // Page not present or already writable
+  pa = PTE2PA(*pte);
+  // Allocate a new page to copy the contents
+  if ((mem = kalloc()) == 0)
+    return -1;
+  memmove(mem, (char *)pa, PGSIZE);
+  // Map the new page as writable
+  if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_FLAGS(*pte) | PTE_W) != 0)
+  {
+    kfree(mem);
+    return -1;
+  }
+  // Invalidate the TLB entry for this page address to ensure the mapping update takes effect
+  sfence_vma(va, 0);
+  return 0;
+}
 // return to user space
 //
 void usertrapret(void)
