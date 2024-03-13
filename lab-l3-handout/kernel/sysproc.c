@@ -28,11 +28,6 @@ sys_fork(void)
 {
     return fork();
 }
-uint64
-sys_vfork(void)
-{
-    return vfork();
-}
 
 uint64
 sys_wait(void)
