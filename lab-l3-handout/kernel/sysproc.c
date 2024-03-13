@@ -28,11 +28,6 @@ sys_fork(void)
 {
     return fork();
 }
-uint64
-sys_vfork(void)
-{
-    return vfork();
-}
 
 uint64
 sys_wait(void)
@@ -124,11 +119,32 @@ uint64 sys_schedset(void)
 
 uint64 sys_va2pa(void)
 {
+    extern struct proc proc[NPROC];
+
     uint64 va = 0;
     int pid = 0;
     argaddr(0, &va);
     argint(1, &pid);
-    return va2pa(va, pid);
+    if (pid == 0)
+    {
+        pid = sys_getpid();
+    }
+    for (struct proc *p = proc; p < &proc[NPROC]; p++)
+    {
+        acquire(&p->lock);
+        if (p->pid == pid)
+        {
+            uint64 addr = walkaddr(p->pagetable, va);
+            if (addr <= 0)
+            {
+                panic("va2pa");
+            }
+            release(&p->lock);
+            return addr;
+        }
+        release(&p->lock);
+    }
+    return 0;
 }
 
 uint64 sys_pfreepages(void)

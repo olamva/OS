@@ -1,31 +1,22 @@
 #include "kernel/types.h"
-#include "kernel/stat.h"
 #include "user/user.h"
 
-uint64 main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-    if (argc != 2 && argc != 3)
+    if (argc == 1)
     {
         printf("Usage: vatopa virtual_address [pid]\n");
-        exit(1);
+        return 0;
     }
-    uint64 va = *argv[1];
-    int pid;
+    uint64 pa = 0;
     if (argc == 2)
     {
-        pid = getpid();
+        pa = va2pa(atoi(argv[1]), getpid());
     }
-    if (argc == 3)
+    else if (argc == 3)
     {
-        pid = *argv[2];
+        pa = va2pa(atoi(argv[1]), atoi(argv[2]));
     }
-    uint64 pa = va2pa(va, pid);
-    if (pa == 0)
-    {
-        printf("va2pa failed\n");
-        exit(0);
-    }
-
     printf("0x%x\n", pa);
-    exit(0);
+    return 0;
 }

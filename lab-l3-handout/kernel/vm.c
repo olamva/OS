@@ -114,32 +114,16 @@ walkaddr(pagetable_t pagetable, uint64 va)
   uint64 pa;
 
   if (va >= MAXVA)
-  {
     return 0;
-    printf("1\n");
-  }
 
   pte = walk(pagetable, va, 0);
   if (pte == 0)
-  {
     return 0;
-    printf("2\n");
-  }
   if ((*pte & PTE_V) == 0)
-  {
     return 0;
-    printf("3\n");
-  }
   if ((*pte & PTE_U) == 0)
-  {
     return 0;
-    printf("4\n");
-  }
   pa = PTE2PA(*pte);
-  if (va == 2)
-  {
-    printf("60000\n");
-  }
   return pa;
 }
 
@@ -203,7 +187,7 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if (do_free)
     {
       uint64 pa = PTE2PA(*pte);
-      kfree((void *)pa);
+      decref((void *)pa);
     }
     *pte = 0;
   }
@@ -260,7 +244,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     memset(mem, 0, PGSIZE);
     if (mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R | PTE_U | xperm) != 0)
     {
-      kfree(mem);
+      decref(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -307,7 +291,7 @@ void freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  kfree((void *)pagetable);
+  decref((void *)pagetable);
 }
 
 // Free user memory pages,
@@ -325,60 +309,61 @@ void uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+
+// Instead of copying the physical memory,  we can
+// map it to the child and change the entry in the parent's page table
+// to be read-only.  This is copy-on-write
 int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
-  pte_t *pte;
-  uint64 pa, i;
-  uint flags;
-  char *mem;
-
+  uint64 i;
+  pte_t *pte_old;
   for (i = 0; i < sz; i += PGSIZE)
   {
-    if ((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
-    if ((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0)
+
+    if ((pte_old = walk(old, i, 0)) == 0)
     {
-      kfree(mem);
-      goto err;
+      panic("uvmcopy: pte should exist");
+      return -1;
     }
-  }
-  return 0;
 
-err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
-}
-int uvmshare(pagetable_t old, pagetable_t new, uint64 sz)
-{
-  pte_t *pte;
-  uint64 pa, i;
-  uint flags;
-  for (i = 0; i < sz; i += PGSIZE)
-  {
-    if ((pte = walk(old, i, 0)) == 0)
-      panic("uvmshare: pte should exist");
-    if ((*pte & PTE_V) == 0)
-      panic("uvmshare: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    // Make the page read-only for the child process
-    flags &= ~PTE_W; // Remove write permission
+    if ((*pte_old & PTE_V) == 0)
+    {
+      panic("uvmcopy: page not present");
+      return -1;
+    }
+
+    if (i % PGSIZE != 0)
+    {
+      panic("uvmcopy: virtual address is not page-aligned");
+      return -1;
+    }
+
+    uint64 pa = PTE2PA(*pte_old);
+    uint flags = PTE_FLAGS(*pte_old);
+    flags &= ~PTE_W;
+
+    // remove parent page table mapping
+    uvmunmap(old, i, 1, 0);
+    mappages(old, i, PGSIZE, pa, flags);
+
+    // map the parent's physical pages into the child
     if (mappages(new, i, PGSIZE, pa, flags) != 0)
     {
-      goto err;
+      // kfree(mem);
+      uvmunmap(new, i, i / PGSIZE, 0);
+      decref((void *)pa);
+      return -1;
     }
+    // increase the ref count of the physical page
+    incref(pa);
   }
   return 0;
-err:
+
+  // do not need this one anymore
+  /*  err:
+  printf("uvmcopy: error");
   uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+  return -1; */
 }
 
 // mark a PTE invalid for user access.

@@ -71,6 +71,8 @@ void ramdiskrw(struct buf *);
 void *kalloc(void);
 void kfree(void *);
 void kinit(void);
+void incref(uint64);
+void decref(void *);
 
 // log.c
 void initlog(int, struct superblock *);
@@ -93,7 +95,6 @@ void printfinit(void);
 int cpuid(void);
 void exit(int);
 int fork(void);
-int vfork(void);
 int growproc(int);
 void proc_mapstacks(pagetable_t);
 pagetable_t proc_pagetable(struct proc *);
@@ -120,7 +121,6 @@ void procdump(void);
 struct user_proc *ps(uint8 start, uint8 count);
 void schedls(void);
 void schedset(int id);
-uint64 va2pa(uint64 va, int pid);
 
 // swtch.S
 void swtch(struct context *, struct context *);
@@ -162,7 +162,6 @@ void trapinit(void);
 void trapinithart(void);
 extern struct spinlock tickslock;
 void usertrapret(void);
-// int handle_cow_fault(uint64);
 
 // uart.c
 void uartinit(void);
@@ -181,7 +180,6 @@ void uvmfirst(pagetable_t, uchar *, uint);
 uint64 uvmalloc(pagetable_t, uint64, uint64, int);
 uint64 uvmdealloc(pagetable_t, uint64, uint64);
 int uvmcopy(pagetable_t, pagetable_t, uint64);
-int uvmshare(pagetable_t, pagetable_t, uint64);
 void uvmfree(pagetable_t, uint64);
 void uvmunmap(pagetable_t, uint64, uint64, int);
 void uvmclear(pagetable_t, uint64);

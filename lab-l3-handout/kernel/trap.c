@@ -31,6 +31,11 @@ void trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
+
+// usertrap needs to recognize page faults.
+// When a write page fault occurs on COW page that was orignially writable,
+// allocate a new page and copy the contents of the old page to the new page with kalloc()
+// The new page should be installed in the PTE with PTE_W set.
 void usertrap(void)
 {
   int which_dev = 0;
@@ -64,6 +69,38 @@ void usertrap(void)
 
     syscall();
   }
+  else if (r_scause() == 15)
+  {
+    pte_t *pte;
+    uint64 va = PGROUNDDOWN(r_stval());
+    if ((pte = walk(p->pagetable, va, 0)) == 0)
+      panic("scause 15: pte should exist");
+    if ((*pte & PTE_V) == 0)
+    {
+      panic("scause 15: page not present");
+    }
+
+    uint64 pa = PTE2PA(*pte);
+    uint flags = PTE_FLAGS(*pte);
+    flags |= PTE_W;
+
+    char *mem;
+    if ((mem = kalloc()) == 0)
+    {
+      uvmunmap(p->pagetable, va, 1, 1);
+    }
+
+    uvmunmap(p->pagetable, va, 1, 0);
+    memmove(mem, (void *)pa, PGSIZE);
+
+    if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0)
+    {
+      // kfree(mem);
+      decref(mem);
+      uvmunmap(p->pagetable, va, 1, 1);
+    }
+    decref((void *)pa);
+  }
   else if ((which_dev = devintr()) != 0)
   {
     // ok
@@ -84,32 +121,6 @@ void usertrap(void)
 
   usertrapret();
 }
-// int handle_cow_fault(uint64 va)
-// {
-//   struct proc *p = myproc();
-//   pte_t *pte;
-//   uint64 pa;
-//   char *mem;
-//   // Walk the page table to find the page table entry for the faulting address
-//   if ((pte = walk(p->pagetable, va, 0)) == 0)
-//     return -1; // Page table entry does not exist
-//   if ((*pte & PTE_V) == 0 || (*pte & PTE_W) != 0)
-//     return -1; // Page not present or already writable
-//   pa = PTE2PA(*pte);
-//   // Allocate a new page to copy the contents
-//   if ((mem = kalloc()) == 0)
-//     return -1;
-//   memmove(mem, (char *)pa, PGSIZE);
-//   // Map the new page as writable
-//   if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_FLAGS(*pte) | PTE_W) != 0)
-//   {
-//     kfree(mem);
-//     return -1;
-//   }
-//   // Unmap the old page
-//   uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 1);
-//   return 0;
-// }
 
 //
 // return to user space

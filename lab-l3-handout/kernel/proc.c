@@ -100,7 +100,7 @@ struct user_proc *ps(uint8 start, uint8 count)
 
     struct user_proc loc_result[count];
 
-    struct proc *p = proc + start;
+    struct proc *p = proc + (start * sizeof(proc));
 
     if (p >= &proc[NPROC])
     {
@@ -108,7 +108,6 @@ struct user_proc *ps(uint8 start, uint8 count)
         return result;
     }
 
-    acquire(&wait_lock);
     uint8 localCount = 0;
     for (; p < &proc[NPROC]; p++)
     {
@@ -131,16 +130,11 @@ struct user_proc *ps(uint8 start, uint8 count)
         // copy char by char
         copy_array(p->name, loc_result[localCount].name, 16);
         if (p->parent != 0) // init
-        {
-            acquire(&p->parent->lock);
             loc_result[localCount].parent_id = p->parent->pid;
-            release(&p->parent->lock);
-        }
 
         release(&p->lock);
         localCount++;
     }
-    release(&wait_lock);
     if (localCount < count)
     {
         loc_result[localCount].state = UNUSED; // if we reach the end of processes
@@ -251,7 +245,7 @@ static void
 freeproc(struct proc *p)
 {
     if (p->trapframe)
-        kfree((void *)p->trapframe);
+        decref((void *)p->trapframe);
     p->trapframe = 0;
     if (p->pagetable)
         proc_freepagetable(p->pagetable, p->sz);
@@ -420,45 +414,6 @@ int fork(void)
     np->state = RUNNABLE;
     release(&np->lock);
 
-    return pid;
-}
-
-int vfork(void)
-{
-    int i, pid;
-    struct proc *np;
-    struct proc *p = myproc();
-    // Allocate process.
-    if ((np = allocproc()) == 0)
-    {
-        return -1;
-    }
-    // Instead of copying user memory, set up a shared, read-only mapping.
-    if (uvmshare(p->pagetable, np->pagetable, p->sz) < 0)
-    {
-        freeproc(np);
-        release(&np->lock);
-        return -1;
-    }
-    np->sz = p->sz;
-    // Copy saved user registers.
-    *(np->trapframe) = *(p->trapframe);
-    // Cause fork to return 0 in the child.
-    np->trapframe->a0 = 0;
-    // Increment reference counts on open file descriptors.
-    for (i = 0; i < NOFILE; i++)
-        if (p->ofile[i])
-            np->ofile[i] = filedup(p->ofile[i]);
-    np->cwd = idup(p->cwd);
-    safestrcpy(np->name, p->name, sizeof(p->name));
-    pid = np->pid;
-    release(&np->lock);
-    acquire(&wait_lock);
-    np->parent = p;
-    release(&wait_lock);
-    acquire(&np->lock);
-    np->state = RUNNABLE;
-    release(&np->lock);
     return pid;
 }
 
@@ -874,26 +829,4 @@ void schedset(int id)
     }
     sched_pointer = available_schedulers[id].impl;
     printf("Scheduler successfully changed to %s\n", available_schedulers[id].name);
-}
-uint64 va2pa(uint64 va, int pid)
-{
-    struct proc *p;
-    pagetable_t pagetable = 0;
-
-    acquire(&pid_lock);
-
-    for (p = proc; p < &proc[NPROC]; p++)
-    {
-        if (p->pid == pid)
-        {
-            pagetable = p->pagetable;
-            break;
-        }
-    }
-    release(&pid_lock);
-    if (pagetable == 0)
-    {
-        return -1;
-    }
-    return walkaddr(pagetable, va);
 }
