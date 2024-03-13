@@ -25,4 +25,4 @@
 #define SYS_schedset 24
 #define SYS_pfreepages 25
 #define SYS_va2pa 26
-#define SYS_vfork 1
+#define SYS_vfork 27

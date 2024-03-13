@@ -34,67 +34,82 @@ void trapinithart(void)
 void usertrap(void)
 {
   int which_dev = 0;
+
   if ((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
+
+  // send interrupts and exceptions to kerneltrap(),
+  // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
+
   struct proc *p = myproc();
+
+  // save user program counter.
   p->trapframe->epc = r_sepc();
-  uint64 scause = r_scause();
-  if (scause == 8)
+
+  if (r_scause() == 8)
   {
-    // system call handling code...
+    // system call
+
+    if (killed(p))
+      exit(-1);
+
+    // sepc points to the ecall instruction,
+    // but we want to return to the next instruction.
+    p->trapframe->epc += 4;
+
+    // an interrupt will change sepc, scause, and sstatus,
+    // so enable only now that we're done with those registers.
+    intr_on();
+
+    syscall();
   }
   else if ((which_dev = devintr()) != 0)
   {
-    // device interrupt handling code...
-  }
-  else if (scause == 15)
-  {                                      // Check if the trap is due to a page fault on write
-    uint64 faulting_address = r_stval(); // The virtual address that caused the fault
-    if (handle_cow_fault(faulting_address) != 0)
-    {
-      printf("usertrap(): page fault handling failed for pid=%d\n", p->pid);
-      setkilled(p);
-    }
+    // ok
   }
   else
   {
-    printf("usertrap(): unexpected scause %p pid=%d\n", scause, p->pid);
+    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
   }
+
   if (killed(p))
     exit(-1);
+
+  // give up the CPU if this is a timer interrupt.
   if (which_dev == 2)
     yield();
+
   usertrapret();
 }
-int handle_cow_fault(uint64 va)
-{
-  struct proc *p = myproc();
-  pte_t *pte;
-  uint64 pa;
-  char *mem;
-  // Walk the page table to find the page table entry for the faulting address
-  if ((pte = walk(p->pagetable, va, 0)) == 0)
-    return -1; // Page table entry does not exist
-  if ((*pte & PTE_V) == 0 || (*pte & PTE_W) != 0)
-    return -1; // Page not present or already writable
-  pa = PTE2PA(*pte);
-  // Allocate a new page to copy the contents
-  if ((mem = kalloc()) == 0)
-    return -1;
-  memmove(mem, (char *)pa, PGSIZE);
-  // Map the new page as writable
-  if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_FLAGS(*pte) | PTE_W) != 0)
-  {
-    kfree(mem);
-    return -1;
-  }
-  // Unmap the old page
-  uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 1);
-  return 0;
-}
+// int handle_cow_fault(uint64 va)
+// {
+//   struct proc *p = myproc();
+//   pte_t *pte;
+//   uint64 pa;
+//   char *mem;
+//   // Walk the page table to find the page table entry for the faulting address
+//   if ((pte = walk(p->pagetable, va, 0)) == 0)
+//     return -1; // Page table entry does not exist
+//   if ((*pte & PTE_V) == 0 || (*pte & PTE_W) != 0)
+//     return -1; // Page not present or already writable
+//   pa = PTE2PA(*pte);
+//   // Allocate a new page to copy the contents
+//   if ((mem = kalloc()) == 0)
+//     return -1;
+//   memmove(mem, (char *)pa, PGSIZE);
+//   // Map the new page as writable
+//   if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_FLAGS(*pte) | PTE_W) != 0)
+//   {
+//     kfree(mem);
+//     return -1;
+//   }
+//   // Unmap the old page
+//   uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 1);
+//   return 0;
+// }
 
 //
 // return to user space
