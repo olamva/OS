@@ -121,9 +121,9 @@ uint64 sys_va2pa(void)
 {
     extern struct proc proc[NPROC];
 
-    int va = 0;
+    uint64 va = 0;
     int pid = 0;
-    argint(0, &va);
+    argaddr(0, &va);
     argint(1, &pid);
     if (pid == 0)
     {

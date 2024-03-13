@@ -96,10 +96,10 @@ void usertrap(void)
     if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0)
     {
       // kfree(mem);
-      ref_decount(mem);
+      decref(mem);
       uvmunmap(p->pagetable, va, 1, 1);
     }
-    ref_decount((void *)pa);
+    decref((void *)pa);
   }
   else if ((which_dev = devintr()) != 0)
   {
