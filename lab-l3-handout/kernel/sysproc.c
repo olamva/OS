@@ -119,11 +119,18 @@ uint64 sys_schedset(void)
 
 uint64 sys_va2pa(void)
 {
-    uint64 va = 0;
-    int pid = 0;
+    //physical address should be printed in hexadecimal value
+
+    //if PID does not exist, syscal should return 0
+    //if no PID is givn, it should get its own pid
+
+    /* printf("TODO: IMPLEMENT ME [%s@%s (line %d)]", __func__, __FILE__, __LINE__); */
+    uint64 va;
+    int p_id;
     argaddr(0, &va);
-    argint(1, &pid);
-    return va2pa(va, pid);
+    argint(1, &p_id);
+
+    return va2pa(va, p_id);
 }
 
 uint64 sys_pfreepages(void)
