@@ -126,9 +126,8 @@ uint64 sys_va2pa(void)
     argaddr(0, &va);
     argint(1, &pid);
     if (pid == 0)
-    {
         pid = sys_getpid();
-    }
+
     for (struct proc *p = proc; p < &proc[NPROC]; p++)
     {
         acquire(&p->lock);
